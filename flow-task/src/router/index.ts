@@ -5,41 +5,30 @@ import {
 
 const router = createRouter({
   history: createWebHistory(),
-
   routes: [
     {
       path: '/',
+      redirect: '/dashboard'
+    },
+    {
+      path: '/dashboard',
       name: 'dashboard',
-      component: () => import('../views/DashboardView.vue'),
-      meta: {
-        title: '数据看板'
-      }
+      component: () =>
+        import('../views/DashboardView.vue')
     },
     {
       path: '/tasks',
       name: 'tasks',
-      component: () => import('../views/TasksView.vue'),
-      meta: {
-        title: '任务管理'
-      }
+      component: () =>
+        import('../views/TasksView.vue')
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/'
+      name: 'not-found',
+      component: () =>
+        import('../views/NotFoundView.vue')
     }
-  ],
-
-  scrollBehavior() {
-    return {
-      top: 0
-    }
-  }
-})
-
-router.afterEach(to => {
-  const title = String(to.meta.title ?? 'FlowTask')
-
-  document.title = `${title} - FlowTask`
+  ]
 })
 
 export default router

@@ -1,5 +1,16 @@
 export type TaskPriority = 'low' | 'medium' | 'high'
 
+export type TaskStatus =
+  | 'all'
+  | 'pending'
+  | 'completed'
+
+export type TaskSort =
+  | 'newest'
+  | 'oldest'
+  | 'dueDate'
+  | 'priority'
+
 export interface Task {
   id: string
   title: string
@@ -17,13 +28,3 @@ export interface TaskFormData {
   priority: TaskPriority
   dueDate: string
 }
-
-export type TaskStatusFilter = 'all' | 'pending' | 'completed'
-
-export type TaskPriorityFilter = 'all' | TaskPriority
-
-export type TaskSort =
-  | 'newest'
-  | 'oldest'
-  | 'dueDate'
-  | 'priority'

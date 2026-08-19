@@ -1,6 +1,60 @@
+<template>
+  <div class="page-container">
+    <div class="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div>
+        <h1 class="text-3xl font-bold text-slate-900 dark:text-white">
+          任务管理
+        </h1>
+
+        <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+          管理你的任务、截止日期和完成状态。
+        </p>
+      </div>
+
+      <button type="button" class="btn-primary" @click="startCreate">
+        + 新增任务
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <aside class="lg:col-span-1">
+        <TaskForm :task="editingTask" @submit="handleFormSubmit" @cancel="cancelEdit" />
+      </aside>
+
+      <section class="space-y-4 lg:col-span-2">
+        <TaskFilters :keyword="keyword" :status="status" :priority="priority" :sort="sort" @update="handleFilterUpdate"
+          @reset="resetFilters" />
+
+        <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500 dark:text-slate-400">
+          <span>
+            共 {{ filteredTasks.length }} 个任务
+          </span>
+
+          <span v-if="filteredTasks.length">
+            第 {{ currentPage }} / {{ pageCount }} 页
+          </span>
+        </div>
+
+        <div v-if="paginatedTasks.length" class="space-y-3">
+          <TaskItem v-for="task in paginatedTasks" :key="task.id" :task="task" @toggle="taskStore.toggleTask"
+            @edit="startEdit" @remove="handleRemove" />
+        </div>
+
+        <EmptyState v-else-if="taskStore.tasks.length" title="没有匹配任务" description="请尝试调整搜索关键词或筛选条件。" button-text="重置筛选"
+          @action="resetFilters" />
+
+        <EmptyState v-else title="暂无任务" description="创建一个任务，开始管理你的工作。" button-text="创建任务" @action="startCreate" />
+
+        <Pagination :current-page="currentPage" :page-count="pageCount" @change="changePage" />
+      </section>
+    </div>
+  </div>
+</template>
+
 <script setup lang="ts">
 import {
   computed,
+  onMounted,
   ref,
   watch
 } from 'vue'
@@ -11,398 +65,357 @@ import {
 } from 'vue-router'
 
 import TaskForm from '../components/TaskForm.vue'
+import TaskFilters from '../components/TaskFilters.vue'
 import TaskItem from '../components/TaskItem.vue'
+import EmptyState from '../components/EmptyState.vue'
+import Pagination from '../components/Pagination.vue'
 
-import { useTaskStore } from '../stores/task'
+import {
+  useTaskStore
+} from '../stores/task'
 
 import type {
   Task,
   TaskFormData,
-  TaskPriorityFilter,
+  TaskPriority,
   TaskSort,
-  TaskStatusFilter
+  TaskStatus
 } from '../types/task'
+
+import {
+  getPositiveInt,
+  getStringQuery
+} from '../utils/query'
 
 const route = useRoute()
 const router = useRouter()
 const taskStore = useTaskStore()
 
-function getStringQuery(
-  value: unknown,
-  fallback = ''
-): string {
-  return typeof value === 'string' ? value : fallback
-}
+const pageSize = 5
 
-function isStatusFilter(
-  value: string
-): value is TaskStatusFilter {
-  return ['all', 'pending', 'completed'].includes(value)
-}
-
-function isPriorityFilter(
-  value: string
-): value is TaskPriorityFilter {
-  return ['all', 'low', 'medium', 'high'].includes(value)
-}
-
-function isTaskSort(value: string): value is TaskSort {
-  return [
-    'newest',
-    'oldest',
-    'dueDate',
-    'priority'
-  ].includes(value)
-}
-
-const initialStatus = getStringQuery(
-  route.query.status,
-  'all'
-)
-
-const initialPriority = getStringQuery(
-  route.query.priority,
-  'all'
-)
-
-const initialSort = getStringQuery(
-  route.query.sort,
-  'newest'
-)
-
-const searchKeyword = ref(
-  getStringQuery(route.query.keyword)
-)
-
-const statusFilter = ref<TaskStatusFilter>(
-  isStatusFilter(initialStatus)
-    ? initialStatus
-    : 'all'
-)
-
-const priorityFilter = ref<TaskPriorityFilter>(
-  isPriorityFilter(initialPriority)
-    ? initialPriority
-    : 'all'
-)
-
-const sortType = ref<TaskSort>(
-  isTaskSort(initialSort)
-    ? initialSort
-    : 'newest'
-)
+const keyword = ref('')
+const status = ref<TaskStatus>('all')
+const priority = ref<
+  TaskPriority | 'all'
+>('all')
+const sort = ref<TaskSort>('newest')
+const currentPage = ref(1)
 
 const editingTask = ref<Task | null>(null)
 
-const priorityWeight = {
+const priorityWeight: Record<
+  TaskPriority,
+  number
+> = {
   high: 3,
   medium: 2,
   low: 1
-} as const
+}
 
 const filteredTasks = computed(() => {
-  const keyword = searchKeyword.value
-    .trim()
-    .toLocaleLowerCase()
+  let result = [...taskStore.tasks]
 
-  const result = taskStore.tasks.filter(task => {
-    const matchesKeyword =
-      !keyword ||
-      task.title.toLocaleLowerCase().includes(keyword) ||
-      task.description.toLocaleLowerCase().includes(keyword)
+  const normalizedKeyword =
+    keyword.value.trim().toLowerCase()
 
-    const matchesStatus =
-      statusFilter.value === 'all' ||
-      (statusFilter.value === 'completed' && task.completed) ||
-      (statusFilter.value === 'pending' && !task.completed)
+  if (normalizedKeyword) {
+    result = result.filter(task => {
+      return (
+        task.title
+          .toLowerCase()
+          .includes(normalizedKeyword) ||
+        task.description
+          .toLowerCase()
+          .includes(normalizedKeyword)
+      )
+    })
+  }
 
-    const matchesPriority =
-      priorityFilter.value === 'all' ||
-      task.priority === priorityFilter.value
+  if (status.value === 'completed') {
+    result = result.filter(task => {
+      return task.completed
+    })
+  }
 
-    return (
-      matchesKeyword &&
-      matchesStatus &&
-      matchesPriority
+  if (status.value === 'pending') {
+    result = result.filter(task => {
+      return !task.completed
+    })
+  }
+
+  if (priority.value !== 'all') {
+    result = result.filter(task => {
+      return task.priority === priority.value
+    })
+  }
+
+  result.sort((a, b) => {
+    if (sort.value === 'newest') {
+      return (
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime()
+      )
+    }
+
+    if (sort.value === 'oldest') {
+      return (
+        new Date(a.createdAt).getTime() -
+        new Date(b.createdAt).getTime()
+      )
+    }
+
+    if (sort.value === 'priority') {
+      return (
+        priorityWeight[b.priority] -
+        priorityWeight[a.priority]
+      )
+    }
+
+    if (!a.dueDate) {
+      return 1
+    }
+
+    if (!b.dueDate) {
+      return -1
+    }
+
+    return a.dueDate.localeCompare(
+      b.dueDate
     )
   })
 
-  return [...result].sort((first, second) => {
-    switch (sortType.value) {
-      case 'oldest':
-        return (
-          new Date(first.createdAt).getTime() -
-          new Date(second.createdAt).getTime()
-        )
-
-      case 'dueDate': {
-        if (!first.dueDate && !second.dueDate) {
-          return 0
-        }
-
-        if (!first.dueDate) {
-          return 1
-        }
-
-        if (!second.dueDate) {
-          return -1
-        }
-
-        return first.dueDate.localeCompare(second.dueDate)
-      }
-
-      case 'priority':
-        return (
-          priorityWeight[second.priority] -
-          priorityWeight[first.priority]
-        )
-
-      case 'newest':
-      default:
-        return (
-          new Date(second.createdAt).getTime() -
-          new Date(first.createdAt).getTime()
-        )
-    }
-  })
+  return result
 })
 
-function handleSubmit(formData: TaskFormData): void {
+const pageCount = computed(() => {
+  return Math.max(
+    1,
+    Math.ceil(
+      filteredTasks.value.length / pageSize
+    )
+  )
+})
+
+const paginatedTasks = computed(() => {
+  const start =
+    (currentPage.value - 1) * pageSize
+
+  return filteredTasks.value.slice(
+    start,
+    start + pageSize
+  )
+})
+
+function updateUrl(): void {
+  const query: Record<string, string> = {}
+
+  if (keyword.value) {
+    query.keyword = keyword.value
+  }
+
+  if (status.value !== 'all') {
+    query.status = status.value
+  }
+
+  if (priority.value !== 'all') {
+    query.priority = priority.value
+  }
+
+  if (sort.value !== 'newest') {
+    query.sort = sort.value
+  }
+
+  if (currentPage.value > 1) {
+    query.page = String(currentPage.value)
+  }
+
+  if (editingTask.value) {
+    query.edit = editingTask.value.id
+  }
+
+  router.replace({
+    path: '/tasks',
+    query
+  })
+}
+
+function readUrlState(): void {
+  keyword.value = getStringQuery(
+    route.query.keyword
+  )
+
+  const queryStatus = getStringQuery(
+    route.query.status
+  )
+
+  status.value =
+    queryStatus === 'pending' ||
+      queryStatus === 'completed'
+      ? queryStatus
+      : 'all'
+
+  const queryPriority = getStringQuery(
+    route.query.priority
+  )
+
+  priority.value =
+    queryPriority === 'low' ||
+      queryPriority === 'medium' ||
+      queryPriority === 'high'
+      ? queryPriority
+      : 'all'
+
+  const querySort = getStringQuery(
+    route.query.sort
+  )
+
+  sort.value =
+    querySort === 'oldest' ||
+      querySort === 'dueDate' ||
+      querySort === 'priority'
+      ? querySort
+      : 'newest'
+
+  currentPage.value = getPositiveInt(
+    route.query.page
+  )
+
+  if (currentPage.value > pageCount.value) {
+    currentPage.value = pageCount.value
+  }
+
+  const editId = getStringQuery(
+    route.query.edit
+  )
+
+  editingTask.value = editId
+    ? taskStore.getTaskById(editId) ?? null
+    : null
+}
+
+function handleFilterUpdate(
+  key:
+    | 'keyword'
+    | 'status'
+    | 'priority'
+    | 'sort',
+  value: string
+): void {
+  if (key === 'keyword') {
+    keyword.value = value
+  }
+
+  if (key === 'status') {
+    status.value = value as TaskStatus
+  }
+
+  if (key === 'priority') {
+    priority.value =
+      value as TaskPriority | 'all'
+  }
+
+  if (key === 'sort') {
+    sort.value = value as TaskSort
+  }
+
+  currentPage.value = 1
+  updateUrl()
+}
+
+function resetFilters(): void {
+  keyword.value = ''
+  status.value = 'all'
+  priority.value = 'all'
+  sort.value = 'newest'
+  currentPage.value = 1
+  updateUrl()
+}
+
+function changePage(page: number): void {
+  if (page < 1 || page > pageCount.value) {
+    return
+  }
+
+  currentPage.value = page
+  updateUrl()
+}
+
+function startCreate(): void {
+  editingTask.value = null
+  currentPage.value = 1
+  updateUrl()
+}
+
+function startEdit(task: Task): void {
+  editingTask.value = task
+  updateUrl()
+}
+
+function cancelEdit(): void {
+  editingTask.value = null
+  updateUrl()
+}
+
+function handleFormSubmit(
+  formData: TaskFormData
+): void {
   if (editingTask.value) {
     taskStore.updateTask(
       editingTask.value.id,
       formData
     )
 
-    editingTask.value = null
-    return
+    editingTask.value =
+      taskStore.getTaskById(
+        editingTask.value.id
+      ) ?? null
+  } else {
+    taskStore.addTask(formData)
   }
 
-  taskStore.addTask(formData)
-}
-
-function handleEdit(task: Task): void {
-  editingTask.value = task
-
-  window.scrollTo({
-    top: 0,
-    behavior: 'smooth'
-  })
-}
-
-function cancelEdit(): void {
-  editingTask.value = null
+  updateUrl()
 }
 
 function handleRemove(id: string): void {
   const confirmed = window.confirm(
-    '确定要删除这个任务吗？删除后无法恢复。'
+    '确定要删除这个任务吗？'
   )
 
   if (!confirmed) {
     return
   }
 
-  taskStore.removeTask(id)
-
   if (editingTask.value?.id === id) {
     editingTask.value = null
   }
-}
 
-function handleClearCompleted(): void {
-  if (taskStore.completedCount === 0) {
-    return
+  taskStore.removeTask(id)
+
+  if (currentPage.value > pageCount.value) {
+    currentPage.value = pageCount.value
   }
 
-  const confirmed = window.confirm(
-    `确定清除 ${taskStore.completedCount} 个已完成任务吗？`
-  )
-
-  if (confirmed) {
-    taskStore.clearCompleted()
-  }
-}
-
-function resetFilters(): void {
-  searchKeyword.value = ''
-  statusFilter.value = 'all'
-  priorityFilter.value = 'all'
-  sortType.value = 'newest'
+  updateUrl()
 }
 
 watch(
-  [
-    searchKeyword,
-    statusFilter,
-    priorityFilter,
-    sortType
-  ],
+  () => route.query,
   () => {
-    const query: Record<string, string> = {}
-
-    if (searchKeyword.value.trim()) {
-      query.keyword = searchKeyword.value.trim()
-    }
-
-    if (statusFilter.value !== 'all') {
-      query.status = statusFilter.value
-    }
-
-    if (priorityFilter.value !== 'all') {
-      query.priority = priorityFilter.value
-    }
-
-    if (sortType.value !== 'newest') {
-      query.sort = sortType.value
-    }
-
-    router.replace({
-      query
-    })
+    readUrlState()
   }
 )
+
+watch(
+  pageCount,
+  value => {
+    if (currentPage.value > value) {
+      currentPage.value = value
+      updateUrl()
+    }
+  }
+)
+
+onMounted(() => {
+  readUrlState()
+})
 </script>
-
-<template>
-  <div class="space-y-6">
-    <section>
-      <h1 class="text-2xl font-bold text-slate-900">
-        任务管理
-      </h1>
-
-      <p class="mt-1 text-sm text-slate-500">
-        创建、编辑、搜索和筛选你的任务
-      </p>
-    </section>
-
-    <TaskForm :task="editingTask" @submit="handleSubmit" @cancel="cancelEdit" />
-
-    <section class="card p-5">
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div>
-          <label for="task-search" class="mb-1.5 block text-sm font-medium text-slate-700">
-            搜索任务
-          </label>
-
-          <input id="task-search" v-model="searchKeyword" class="form-input" type="search" placeholder="搜索标题或描述" />
-        </div>
-
-        <div>
-          <label for="status-filter" class="mb-1.5 block text-sm font-medium text-slate-700">
-            任务状态
-          </label>
-
-          <select id="status-filter" v-model="statusFilter" class="form-input">
-            <option value="all">
-              全部状态
-            </option>
-
-            <option value="pending">
-              待完成
-            </option>
-
-            <option value="completed">
-              已完成
-            </option>
-          </select>
-        </div>
-
-        <div>
-          <label for="priority-filter" class="mb-1.5 block text-sm font-medium text-slate-700">
-            优先级
-          </label>
-
-          <select id="priority-filter" v-model="priorityFilter" class="form-input">
-            <option value="all">
-              全部优先级
-            </option>
-
-            <option value="high">
-              高优先级
-            </option>
-
-            <option value="medium">
-              中优先级
-            </option>
-
-            <option value="low">
-              低优先级
-            </option>
-          </select>
-        </div>
-
-        <div>
-          <label for="task-sort" class="mb-1.5 block text-sm font-medium text-slate-700">
-            排序方式
-          </label>
-
-          <select id="task-sort" v-model="sortType" class="form-input">
-            <option value="newest">
-              最新创建
-            </option>
-
-            <option value="oldest">
-              最早创建
-            </option>
-
-            <option value="dueDate">
-              截止日期
-            </option>
-
-            <option value="priority">
-              优先级
-            </option>
-          </select>
-        </div>
-      </div>
-
-      <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-        <p class="text-sm text-slate-500">
-          找到
-          <strong class="text-slate-900">
-            {{ filteredTasks.length }}
-          </strong>
-          个任务
-        </p>
-
-        <div class="flex flex-wrap gap-2">
-          <button class="btn-secondary" type="button" @click="resetFilters">
-            重置筛选
-          </button>
-
-          <button
-            class="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-            type="button" :disabled="taskStore.completedCount === 0" @click="handleClearCompleted">
-            清除已完成
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section>
-      <div v-if="filteredTasks.length" class="space-y-3">
-        <TaskItem v-for="task in filteredTasks" :key="task.id" :task="task" @toggle="taskStore.toggleTask"
-          @edit="handleEdit" @remove="handleRemove" />
-      </div>
-
-      <div v-else class="card py-16 text-center">
-        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-2xl">
-          ✓
-        </div>
-
-        <h2 class="mt-4 font-semibold text-slate-900">
-          没有找到任务
-        </h2>
-
-        <p class="mt-1 text-sm text-slate-500">
-          可以调整筛选条件或者创建新任务
-        </p>
-
-        <button class="btn-secondary mt-4" type="button" @click="resetFilters">
-          重置筛选
-        </button>
-      </div>
-    </section>
-  </div>
-</template>

@@ -1,7 +1,70 @@
+<template>
+  <form class="card p-5" @submit.prevent="handleSubmit">
+    <div class="mb-5 flex items-center justify-between">
+      <div>
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white">
+          {{ task ? '编辑任务' : '新增任务' }}
+        </h2>
+
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          填写任务信息后保存
+        </p>
+      </div>
+
+      <button v-if="task" type="button"
+        class="text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+        @click="$emit('cancel')">
+        取消编辑
+      </button>
+    </div>
+
+    <div class="space-y-4">
+      <div>
+        <label class="label">
+          任务标题 <span class="text-red-500">*</span>
+        </label>
+
+        <input v-model="form.title" class="input" type="text" maxlength="80" placeholder="例如：完成项目首页设计" />
+
+        <p v-if="errors.title" class="mt-1 text-xs text-red-500">
+          {{ errors.title }}
+        </p>
+      </div>
+
+      <div>
+        <label class="label">任务描述</label>
+
+        <textarea v-model="form.description" class="input min-h-24 resize-y" maxlength="500" placeholder="补充任务说明..." />
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label class="label">优先级</label>
+
+          <select v-model="form.priority" class="input">
+            <option value="high">高优先级</option>
+            <option value="medium">中优先级</option>
+            <option value="low">低优先级</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="label">截止日期</label>
+
+          <input v-model="form.dueDate" class="input" type="date" />
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary w-full">
+        {{ task ? '保存修改' : '创建任务' }}
+      </button>
+    </div>
+  </form>
+</template>
+
 <script setup lang="ts">
 import {
   reactive,
-  ref,
   watch
 } from 'vue'
 
@@ -15,11 +78,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  submit: [formData: TaskFormData]
+  submit: [data: TaskFormData]
   cancel: []
 }>()
-
-const titleError = ref('')
 
 const form = reactive<TaskFormData>({
   title: '',
@@ -28,29 +89,35 @@ const form = reactive<TaskFormData>({
   dueDate: ''
 })
 
+const errors = reactive({
+  title: ''
+})
+
 function resetForm(): void {
   form.title = props.task?.title ?? ''
-  form.description = props.task?.description ?? ''
-  form.priority = props.task?.priority ?? 'medium'
+  form.description =
+    props.task?.description ?? ''
+  form.priority =
+    props.task?.priority ?? 'medium'
   form.dueDate = props.task?.dueDate ?? ''
-
-  titleError.value = ''
+  errors.title = ''
 }
 
 function handleSubmit(): void {
+  errors.title = ''
+
   const title = form.title.trim()
 
   if (!title) {
-    titleError.value = '请输入任务标题'
+    errors.title = '请输入任务标题'
     return
   }
 
-  if (title.length > 50) {
-    titleError.value = '任务标题不能超过 50 个字符'
+  if (title.length > 80) {
+    errors.title =
+      '任务标题不能超过 80 个字符'
     return
   }
-
-  titleError.value = ''
 
   emit('submit', {
     title,
@@ -69,105 +136,9 @@ function handleSubmit(): void {
 
 watch(
   () => props.task,
-  () => {
-    resetForm()
-  },
+  resetForm,
   {
     immediate: true
   }
 )
 </script>
-
-<template>
-  <section class="card p-5">
-    <div class="mb-5">
-      <h2 class="text-lg font-semibold text-slate-900">
-        {{ task ? '编辑任务' : '创建任务' }}
-      </h2>
-
-      <p class="mt-1 text-sm text-slate-500">
-        {{
-          task
-            ? '修改任务内容后保存'
-            : '填写信息并创建一个新任务'
-        }}
-      </p>
-    </div>
-
-    <form class="space-y-4" @submit.prevent="handleSubmit">
-      <div>
-        <label for="task-title" class="mb-1.5 block text-sm font-medium text-slate-700">
-          任务标题
-        </label>
-
-        <input id="task-title" v-model="form.title" class="form-input" :class="{
-          'border-red-500 focus:border-red-500 focus:ring-red-100':
-            titleError
-        }" type="text" maxlength="50" placeholder="例如：完成项目登录页面" @input="titleError = ''" />
-
-        <div class="mt-1 flex justify-between gap-4">
-          <p class="text-xs text-red-500">
-            {{ titleError }}
-          </p>
-
-          <p class="text-xs text-slate-400">
-            {{ form.title.length }}/50
-          </p>
-        </div>
-      </div>
-
-      <div>
-        <label for="task-description" class="mb-1.5 block text-sm font-medium text-slate-700">
-          任务描述
-        </label>
-
-        <textarea id="task-description" v-model="form.description" class="form-input min-h-24 resize-y" maxlength="300"
-          placeholder="简单描述一下任务内容" />
-
-        <p class="mt-1 text-right text-xs text-slate-400">
-          {{ form.description.length }}/300
-        </p>
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label for="task-priority" class="mb-1.5 block text-sm font-medium text-slate-700">
-            优先级
-          </label>
-
-          <select id="task-priority" v-model="form.priority" class="form-input">
-            <option value="low">
-              低优先级
-            </option>
-
-            <option value="medium">
-              中优先级
-            </option>
-
-            <option value="high">
-              高优先级
-            </option>
-          </select>
-        </div>
-
-        <div>
-          <label for="task-date" class="mb-1.5 block text-sm font-medium text-slate-700">
-            截止日期
-          </label>
-
-          <input id="task-date" v-model="form.dueDate" class="form-input" type="date" />
-        </div>
-      </div>
-
-      <div class="flex flex-wrap justify-end gap-3 pt-2">
-        <button v-if="task" class="btn-secondary" type="button" @click="emit('cancel')">
-          取消编辑
-        </button>
-
-        <button class="btn-primary" type="submit">
-          {{ task ? '保存修改' : '创建任务' }}
-        </button>
-      </div>
-    </form>
-  </section>
-</template>

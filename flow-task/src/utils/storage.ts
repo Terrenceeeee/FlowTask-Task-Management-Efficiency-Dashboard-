@@ -1,17 +1,47 @@
-import type { Task } from '../types/task'
-import { getFutureDate } from './date'
+import type {
+  Task,
+  TaskPriority
+} from '../types/task'
 
-const STORAGE_KEY = 'flow-task-list'
+export const TASK_STORAGE_KEY =
+  'flow-task-tasks'
 
-function createId(): string {
+export const THEME_STORAGE_KEY =
+  'flow-task-theme'
+
+function isPriority(
+  value: unknown
+): value is TaskPriority {
+  return (
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high'
+  )
+}
+
+export function isValidTask(
+  value: unknown
+): value is Task {
   if (
-    typeof crypto !== 'undefined' &&
-    typeof crypto.randomUUID === 'function'
+    typeof value !== 'object' ||
+    value === null
   ) {
-    return crypto.randomUUID()
+    return false
   }
 
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const task =
+    value as Record<string, unknown>
+
+  return (
+    typeof task.id === 'string' &&
+    typeof task.title === 'string' &&
+    typeof task.description === 'string' &&
+    isPriority(task.priority) &&
+    typeof task.completed === 'boolean' &&
+    typeof task.dueDate === 'string' &&
+    typeof task.createdAt === 'string' &&
+    typeof task.updatedAt === 'string'
+  )
 }
 
 function createInitialTasks(): Task[] {
@@ -19,67 +49,78 @@ function createInitialTasks(): Task[] {
 
   return [
     {
-      id: createId(),
-      title: '完成 Vue3 项目首页',
-      description: '完成页面布局、响应式适配和基础组件拆分。',
+      id: 'task-demo-1',
+      title: '完善 FlowTask 项目',
+      description:
+        '完成任务管理、筛选、分页和统计功能。',
       priority: 'high',
       completed: false,
-      dueDate: getFutureDate(1),
+      dueDate: '2026-12-20',
       createdAt: now,
       updatedAt: now
     },
     {
-      id: createId(),
-      title: '复习 JavaScript 事件循环',
-      description: '掌握宏任务、微任务以及 Promise 的执行顺序。',
+      id: 'task-demo-2',
+      title: '学习 Vue 3 Composition API',
+      description:
+        '了解 ref、computed、watch 和组合式函数。',
       priority: 'medium',
-      completed: false,
-      dueDate: getFutureDate(3),
+      completed: true,
+      dueDate: '2026-11-10',
       createdAt: now,
       updatedAt: now
     },
     {
-      id: createId(),
-      title: '整理 TypeScript 笔记',
-      description: '整理泛型、联合类型和类型收窄知识点。',
+      id: 'task-demo-3',
+      title: '整理前端简历',
+      description:
+        '补充项目亮点、技术栈和项目成果。',
       priority: 'low',
-      completed: true,
-      dueDate: getFutureDate(5),
+      completed: false,
+      dueDate: '',
       createdAt: now,
       updatedAt: now
     }
   ]
 }
 
+export function saveTasks(
+  tasks: Task[]
+): void {
+  localStorage.setItem(
+    TASK_STORAGE_KEY,
+    JSON.stringify(tasks)
+  )
+}
+
 export function loadTasks(): Task[] {
   try {
-    const value = localStorage.getItem(STORAGE_KEY)
+    const value = localStorage.getItem(
+      TASK_STORAGE_KEY
+    )
 
     if (value === null) {
-      return createInitialTasks()
+      const initialTasks =
+        createInitialTasks()
+
+      saveTasks(initialTasks)
+      return initialTasks
     }
 
-    const parsedValue: unknown = JSON.parse(value)
+    const parsed: unknown =
+      JSON.parse(value)
 
-    if (!Array.isArray(parsedValue)) {
+    if (!Array.isArray(parsed)) {
       return []
     }
 
-    return parsedValue as Task[]
+    return parsed.filter(isValidTask)
   } catch (error) {
-    console.error('读取任务数据失败：', error)
+    console.error(
+      '读取任务数据失败：',
+      error
+    )
 
     return []
-  }
-}
-
-export function saveTasks(tasks: Task[]): void {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(tasks)
-    )
-  } catch (error) {
-    console.error('保存任务数据失败：', error)
   }
 }

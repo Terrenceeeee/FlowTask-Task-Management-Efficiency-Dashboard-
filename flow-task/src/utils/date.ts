@@ -1,9 +1,15 @@
-export function formatDate(dateString: string): string {
-  if (!dateString) {
+export function formatDate(
+  value: string
+): string {
+  if (!value) {
     return '未设置'
   }
 
-  const date = new Date(`${dateString}T00:00:00`)
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '日期无效'
+  }
 
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
@@ -12,33 +18,42 @@ export function formatDate(dateString: string): string {
   }).format(date)
 }
 
-export function getDateInputValue(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+export function formatDateTime(
+  value: string
+): string {
+  if (!value) {
+    return ''
+  }
 
-  return `${year}-${month}-${day}`
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date)
 }
 
-export function getToday(): string {
-  return getDateInputValue(new Date())
-}
-
-export function getFutureDate(days: number): string {
-  const date = new Date()
-
-  date.setDate(date.getDate() + days)
-
-  return getDateInputValue(date)
-}
-
-export function isTaskOverdue(
+export function isOverdue(
   dueDate: string,
-  completed: boolean
+  completed = false
 ): boolean {
   if (!dueDate || completed) {
     return false
   }
 
-  return dueDate < getToday()
+  const endOfDay = new Date(`${dueDate}T23:59:59`)
+  return endOfDay.getTime() < Date.now()
+}
+
+export function createId(): string {
+  return `task-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`
 }
